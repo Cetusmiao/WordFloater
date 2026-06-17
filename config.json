@@ -1,0 +1,9 @@
+{
+  "font_size": 16,
+  "words_per_page": 5,
+  "refresh_interval": 5,
+  "opacity": 0.85,
+  "word_books": [],
+  "active_book": "",
+  "active_source": "builtin"
+}
