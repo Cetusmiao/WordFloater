@@ -102,6 +102,7 @@ class SettingsDialog(QDialog):
         lo.addWidget(wb_header)
 
         self.wb_list = QListWidget()
+        self.wb_list.setSelectionMode(QListWidget.ExtendedSelection)
         self.wb_list.setMaximumHeight(120)
         self._refresh_wb_list()
         lo.addWidget(self.wb_list)
@@ -125,8 +126,18 @@ class SettingsDialog(QDialog):
         )
         del_wb_btn.clicked.connect(self._del_wb)
 
+        del_all_wb_btn = QPushButton("🗑️ 批量删除选中")
+        del_all_wb_btn.setFont(QFont("Microsoft YaHei", 12))
+        del_all_wb_btn.setStyleSheet(
+            f"QPushButton{{background:#c53030;color:white;border:none;border-radius:6px;"
+            f"padding:6px 14px;font-size:13px;}}"
+            "QPushButton:hover{background:#9b2c2c;}"
+        )
+        del_all_wb_btn.clicked.connect(self._batch_del_wb)
+
         wb_btns.addWidget(add_wb_btn)
         wb_btns.addWidget(del_wb_btn)
+        wb_btns.addWidget(del_all_wb_btn)
         wb_btns.addStretch()
         lo.addLayout(wb_btns)
 
@@ -142,6 +153,7 @@ class SettingsDialog(QDialog):
         lo.addWidget(vocab_header)
 
         self.vocab_list = QListWidget()
+        self.vocab_list.setSelectionMode(QListWidget.ExtendedSelection)
         self.vocab_list.setMaximumHeight(120)
         self._refresh_vocab_list()
         lo.addWidget(self.vocab_list)
@@ -155,7 +167,18 @@ class SettingsDialog(QDialog):
             "QPushButton:hover{background:#e53e3e;}"
         )
         del_vocab_btn.clicked.connect(self._del_vocab)
+
+        del_all_vocab_btn = QPushButton("🗑️ 批量删除选中")
+        del_all_vocab_btn.setFont(QFont("Microsoft YaHei", 12))
+        del_all_vocab_btn.setStyleSheet(
+            f"QPushButton{{background:#c53030;color:white;border:none;border-radius:6px;"
+            f"padding:6px 14px;font-size:13px;}}"
+            "QPushButton:hover{background:#9b2c2c;}"
+        )
+        del_all_vocab_btn.clicked.connect(self._batch_del_vocab)
+
         vocab_btns.addWidget(del_vocab_btn)
+        vocab_btns.addWidget(del_all_vocab_btn)
         vocab_btns.addStretch()
         lo.addLayout(vocab_btns)
 
@@ -201,6 +224,27 @@ class SettingsDialog(QDialog):
             self.pw.word_data.delete_builtin_word(w)
             self._refresh_wb_list()
 
+    def _batch_del_wb(self):
+        selected = self.wb_list.selectedItems()
+        if not selected:
+            return
+        count = len(selected)
+        reply = QMessageBox.question(
+            self, "批量删除",
+            f"确定删除选中的 {count} 个单词？",
+            QMessageBox.Yes | QMessageBox.No,
+        )
+        if reply != QMessageBox.Yes:
+            return
+        words = []
+        for item in selected:
+            text = item.text()
+            word = text.split("  —  ")[0].strip()
+            words.append(word)
+        deleted = self.pw.word_data.batch_delete_builtin_words(words)
+        self._refresh_wb_list()
+        QMessageBox.information(self, "完成", f"已删除 {deleted} 个单词。")
+
     # ---- 生词本 ----
 
     def _refresh_vocab_list(self):
@@ -218,6 +262,27 @@ class SettingsDialog(QDialog):
         if reply == QMessageBox.Yes:
             self.pw.word_data.delete_vocab_word(w)
             self._refresh_vocab_list()
+
+    def _batch_del_vocab(self):
+        selected = self.vocab_list.selectedItems()
+        if not selected:
+            return
+        count = len(selected)
+        reply = QMessageBox.question(
+            self, "批量删除",
+            f"确定从生词本删除选中的 {count} 个单词？",
+            QMessageBox.Yes | QMessageBox.No,
+        )
+        if reply != QMessageBox.Yes:
+            return
+        words = []
+        for item in selected:
+            text = item.text()
+            word = text.split("  —  ")[0].strip()
+            words.append(word)
+        deleted = self.pw.word_data.batch_delete_vocab_words(words)
+        self._refresh_vocab_list()
+        QMessageBox.information(self, "完成", f"已从生词本删除 {deleted} 个单词。")
 
     # ---- 帮助 ----
 

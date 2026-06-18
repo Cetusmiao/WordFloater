@@ -4,7 +4,8 @@
 
 import os
 import random
-from .config import load_config, save_config
+import shutil
+from .config import load_config, save_config, BASE_DIR
 from .csv_manager import (
     load_builtin_csv, save_builtin_csv,
     parse_csv_words, compact_list,
@@ -81,6 +82,36 @@ class WordData:
             save_config(self.config)
         return len(words)
 
+    def add_book_and_copy(self, filepath):
+        """导入外部 CSV 辞书：复制到程序目录后加载，返回 (copy_path, count)"""
+        abs_path = os.path.abspath(filepath)
+        basename = os.path.basename(abs_path)
+
+        # 目标路径：程序目录（与 config.json 同级）
+        dest_path = os.path.join(BASE_DIR, basename)
+
+        # 若源文件不在程序目录，复制过来（同名则覆盖）
+        if os.path.normcase(abs_path) != os.path.normcase(dest_path):
+            try:
+                shutil.copy2(abs_path, dest_path)
+            except Exception as e:
+                print(f"复制失败: {e}")
+                return None, 0
+
+        # 用目标路径加载（如果已加载过，更新数据）
+        abs_dest = os.path.abspath(dest_path)
+        words = parse_csv_words(abs_dest)
+        if not words:
+            return abs_dest, 0
+        self.books[abs_dest] = words
+        if abs_dest not in self.config['word_books']:
+            self.config['word_books'].append(abs_dest)
+        # 替换已有的同名路径
+        if abs_path in self.config['word_books'] and abs_path != abs_dest:
+            self.config['word_books'].remove(abs_path)
+        save_config(self.config)
+        return abs_dest, len(words)
+
     def remove_book(self, filepath):
         abs_path = os.path.abspath(filepath)
         self.books.pop(abs_path, None)
@@ -113,6 +144,15 @@ class WordData:
         self._sync()
         if self.active_source == 'builtin':
             self.active_words = [(w, m) for w, m in self.builtin_wb]
+
+    def batch_delete_builtin_words(self, words):
+        """批量删除内置单词本中的单词，words 为要删除的单词列表"""
+        words_set = set(words)
+        self.builtin_wb = [(w, m) for w, m in self.builtin_wb if w not in words_set]
+        self._sync()
+        if self.active_source == 'builtin':
+            self.active_words = [(w, m) for w, m in self.builtin_wb]
+        return len(words_set)
 
     # ---- 生词本增删（熟练度系统） ----
 
@@ -154,6 +194,15 @@ class WordData:
         self._sync()
         if self.active_source == 'vocab':
             self.active_words = [(w, m) for w, m, p in self.vocab]
+
+    def batch_delete_vocab_words(self, words):
+        """批量删除生词本中的单词，words 为要删除的单词列表"""
+        words_set = set(words)
+        self.vocab = [(w, m, p) for w, m, p in self.vocab if w not in words_set]
+        self._sync()
+        if self.active_source == 'vocab':
+            self.active_words = [(w, m) for w, m, p in self.vocab]
+        return len(words_set)
 
     # ---- 同步保存 ----
 

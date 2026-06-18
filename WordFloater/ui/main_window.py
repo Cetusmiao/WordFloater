@@ -7,8 +7,8 @@ from PyQt5.QtWidgets import (
     QLabel, QPushButton, QGraphicsDropShadowEffect,
     QFileDialog, QMessageBox, QMenu, QAction, QApplication,
 )
-from PyQt5.QtCore import QTimer, Qt, QPoint
-from PyQt5.QtGui import QFont, QColor
+from PyQt5.QtCore import QTimer, Qt, QPoint, QUrl
+from PyQt5.QtGui import QFont, QColor, QDragEnterEvent, QDropEvent
 
 from ..config import COLORS, BASE_DIR
 from ..word_data import WordData
@@ -36,6 +36,7 @@ class FloatingLyricWidget(QMainWindow):
         }
         self.setWindowFlags(Qt.WindowStaysOnTopHint | Qt.FramelessWindowHint)
         self.setAttribute(Qt.WA_TranslucentBackground)
+        self.setAcceptDrops(True)
         self.opacity = cfg.get('opacity', 0.85)
         self.timer_interval = self.settings['refresh_interval'] * 1000
         self.resize(520, 480)
@@ -204,11 +205,11 @@ class FloatingLyricWidget(QMainWindow):
         fp, _ = QFileDialog.getOpenFileName(self, "选择CSV单词本", BASE_DIR, "CSV (*.csv);;所有 (*)")
         if not fp:
             return
-        count = self.word_data.add_book(fp)
+        copy_path, count = self.word_data.add_book_and_copy(fp)
         if count == 0:
             QMessageBox.warning(self, "⚠️", "无法解析该文件")
             return
-        self._switch_source(os.path.abspath(fp))
+        self._switch_source(copy_path)
 
     def _update_count_label(self):
         self.book_btn.setText(f"📚 {self.word_data.get_active_book_name()}")
@@ -318,6 +319,13 @@ class FloatingLyricWidget(QMainWindow):
         # 颜色反馈
         for i, (ml, sl, rw) in enumerate(self.word_widgets):
             if i == 0:
+                # 答错时在题目行显示正确答案
+                if clicked != answer:
+                    ml.setText(f"❌ 正确答案：{answer}")
+                    ml.setStyleSheet("color:#e53e3e;background:rgba(252,129,129,0.15);font-weight:bold;")
+                else:
+                    ml.setText(f"✅ 回答正确！")
+                    ml.setStyleSheet("color:#276749;background:rgba(72,187,120,0.15);font-weight:bold;")
                 continue
             if i - 1 >= len(self.settings['quiz_options']):
                 break
@@ -386,7 +394,15 @@ class FloatingLyricWidget(QMainWindow):
 
         direction = random.choice(['cn_to_en', 'en_to_cn'])
         target = words[0]
-        pool = words[:min(len(words), self.settings['words_per_page'])]
+
+        # 构造干扰项池（不含正确答案），然后从中选最多 3 个
+        distractors = [w for w in words if w != target]
+        random.shuffle(distractors)
+        option_count = min(4, len(words))  # 最多 4 个选项
+        picked_distractors = distractors[:option_count - 1]
+
+        # 合并正确答案 + 干扰项，打乱顺序
+        pool = [target] + picked_distractors
         random.shuffle(pool)
 
         if direction == 'cn_to_en':
@@ -437,3 +453,27 @@ class FloatingLyricWidget(QMainWindow):
         if event.buttons() == Qt.LeftButton:
             self.move(event.globalPos() - self.dragPos)
             event.accept()
+
+    # ---- 拖拽 CSV 导入辞书 ----
+
+    def dragEnterEvent(self, event: QDragEnterEvent):
+        if event.mimeData().hasUrls():
+            for url in event.mimeData().urls():
+                if url.toLocalFile().lower().endswith('.csv'):
+                    event.acceptProposedAction()
+                    return
+        event.ignore()
+
+    def dropEvent(self, event: QDropEvent):
+        for url in event.mimeData().urls():
+            filepath = url.toLocalFile()
+            if not filepath.lower().endswith('.csv'):
+                continue
+            copy_path, count = self.word_data.add_book_and_copy(filepath)
+            if count == 0:
+                QMessageBox.warning(self, "⚠️", f"无法解析文件：\n{filepath}")
+            else:
+                name = os.path.splitext(os.path.basename(copy_path))[0]
+                self._switch_source(copy_path)
+                QMessageBox.information(self, "📚 导入成功", f"已导入「{name}」（{count} 词）\n已复制到程序目录。")
+        event.acceptProposedAction()
